@@ -12,6 +12,7 @@ from apps.stable_diffusion.web.ui.utils import (
     scheduler_list,
     predefined_upscaler_models,
 )
+import apps.stable_diffusion.src.utils.state_manager as state_manager
 
 
 with gr.Blocks(title="Upscaler") as upscaler_web:
@@ -258,5 +259,6 @@ with gr.Blocks(title="Upscaler") as upscaler_web:
         neg_prompt_submit = negative_prompt.submit(**kwargs)
         generate_click = stable_diffusion.click(**kwargs)
         stop_batch.click(
-            fn=None, cancels=[prompt_submit, neg_prompt_submit, generate_click]
+            fn=state_manager.app.set_canceling,
+            cancels=[prompt_submit, neg_prompt_submit, generate_click],
         )

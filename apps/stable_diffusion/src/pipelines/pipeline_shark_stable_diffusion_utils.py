@@ -30,9 +30,7 @@ from apps.stable_diffusion.src.utils import (
     end_profiling,
 )
 import sys
-
-SD_STATE_IDLE = "idle"
-SD_STATE_CANCEL = "cancel"
+import apps.stable_diffusion.src.utils.state_manager as state_manager
 
 
 class StableDiffusionPipeline:
@@ -61,7 +59,6 @@ class StableDiffusionPipeline:
         self.scheduler = scheduler
         # TODO: Implement using logging python utility.
         self.log = ""
-        self.status = SD_STATE_IDLE
         self.sd_model = sd_model
         self.import_mlir = import_mlir
         self.use_lora = use_lora
@@ -195,7 +192,6 @@ class StableDiffusionPipeline:
         masked_image_latents=None,
         return_all_latents=False,
     ):
-        self.status = SD_STATE_IDLE
         step_time_sum = 0
         latent_history = [latents]
         text_embeddings = torch.from_numpy(text_embeddings).to(dtype)
@@ -246,8 +242,9 @@ class StableDiffusionPipeline:
             #  )
             step_time_sum += step_time
 
-            if self.status == SD_STATE_CANCEL:
+            if state_manager.app.is_canceling():
                 break
+            state_manager.app.update_job_progress(i)
 
         if self.ondemand:
             self.unload_unet()

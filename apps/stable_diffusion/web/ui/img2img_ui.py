@@ -16,7 +16,6 @@ from apps.stable_diffusion.web.ui.utils import (
     get_custom_model_files,
     scheduler_list,
     predefined_models,
-    cancel_sd,
 )
 from apps.stable_diffusion.src import (
     args,
@@ -30,6 +29,7 @@ from apps.stable_diffusion.src import (
     save_output_img,
 )
 from apps.stable_diffusion.src.utils import get_generation_text_info
+import apps.stable_diffusion.src.utils.state_manager as state_manager
 
 
 # set initial values of iree_vulkan_target_triple, use_tuned and import_mlir.
@@ -70,9 +70,10 @@ def img2img_inf(
         Config,
     )
     import apps.stable_diffusion.web.utils.global_obj as global_obj
-    from apps.stable_diffusion.src.pipelines.pipeline_shark_stable_diffusion_utils import (
-        SD_STATE_CANCEL,
-    )
+    import apps.stable_diffusion.src.utils.state_manager as state_manager
+
+    if not state_manager.app.is_ready():
+        return
 
     args.prompts = [prompt]
     args.negative_prompts = [negative_prompt]
@@ -110,6 +111,8 @@ def img2img_inf(
         lora_weights, lora_hf_id, "lora"
     )
 
+    # try: (TODO: State Manager Try starts here)
+    state_manager.app.set_job(f"Initializing model {custom_model}", False)
     args.save_metadata_to_json = save_metadata_to_json
     args.write_metadata_to_png = save_metadata_to_png
 
@@ -226,6 +229,13 @@ def img2img_inf(
     extra_info = {"STRENGTH": strength}
     text_output = ""
     for current_batch in range(batch_count):
+        state_manager.app.set_job(
+            "Running img2img job",
+            False,
+            current_batch,
+            batch_count,
+            steps * strength,
+        )
         if current_batch > 0:
             img_seed = utils.sanitize_seed(-1)
         out_imgs = global_obj.get_sd_obj().generate_images(
@@ -251,13 +261,18 @@ def img2img_inf(
         text_output += "\n" + global_obj.get_sd_obj().log
         text_output += f"\nTotal image(s) generation time: {total_time:.4f}sec"
 
-        if global_obj.get_sd_status() == SD_STATE_CANCEL:
+        if state_manager.app.is_canceling():
             break
         else:
             save_output_img(out_imgs[0], img_seed, extra_info)
             generated_imgs.extend(out_imgs)
-            #  yield generated_imgs, text_output
+            yield generated_imgs, text_output
 
+    # except Exception: (TODO: State Manager catch ends here)
+    #     state_manager.app.set_ready()
+    #     raise
+
+    state_manager.app.set_ready()
     return generated_imgs, text_output
 
 
@@ -575,6 +590,6 @@ with gr.Blocks(title="Image-to-Image") as img2img_web:
         neg_prompt_submit = negative_prompt.submit(**kwargs)
         generate_click = stable_diffusion.click(**kwargs)
         stop_batch.click(
-            fn=cancel_sd,
+            fn=state_manager.app.set_canceling,
             cancels=[prompt_submit, neg_prompt_submit, generate_click],
         )

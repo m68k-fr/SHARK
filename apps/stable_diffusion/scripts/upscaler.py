@@ -50,6 +50,10 @@ def upscaler_inf(
         Config,
     )
     import apps.stable_diffusion.web.utils.global_obj as global_obj
+    import apps.stable_diffusion.src.utils.state_manager as state_manager
+
+    if not state_manager.app.is_ready():
+        return
 
     args.prompts = [prompt]
     args.negative_prompts = [negative_prompt]
@@ -81,6 +85,9 @@ def upscaler_inf(
     else:
         args.hf_model_id = custom_model
 
+    # TODO: StateManager Try starts here
+    # try:
+    state_manager.app.set_job(f"Initializing model {custom_model}", False)
     args.save_metadata_to_json = save_metadata_to_json
     args.write_metadata_to_png = save_metadata_to_png
 
@@ -159,6 +166,13 @@ def upscaler_inf(
     img_seed = utils.sanitize_seed(seed)
     extra_info = {"NOISE LEVEL": noise_level}
     for current_batch in range(batch_count):
+        state_manager.app.set_job(
+            "Running upscaler job",
+            False,
+            current_batch,
+            batch_count,
+            steps,
+        )
         if current_batch > 0:
             img_seed = utils.sanitize_seed(-1)
         low_res_img = image
@@ -185,6 +199,8 @@ def upscaler_inf(
                 )
                 high_res_img.paste(upscaled_image[0], (j * 4, i * 4))
 
+        if state_manager.app.is_canceling():
+            break
         save_output_img(high_res_img, img_seed, extra_info)
         generated_imgs.append(high_res_img)
         seeds.append(img_seed)
@@ -201,7 +217,13 @@ def upscaler_inf(
     text_output += global_obj.get_sd_obj().log
     text_output += f"\nTotal image generation time: {total_time:.4f}sec"
 
-    yield generated_imgs, text_output
+    # TODO: StateManager Try ends here
+    # except Exception:
+    #     state_manager.app.set_ready()
+    #     raise
+
+    state_manager.app.set_ready()
+    return generated_imgs, text_output
 
 
 if __name__ == "__main__":

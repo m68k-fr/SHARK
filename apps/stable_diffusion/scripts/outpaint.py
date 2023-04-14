@@ -55,9 +55,10 @@ def outpaint_inf(
         Config,
     )
     import apps.stable_diffusion.web.utils.global_obj as global_obj
-    from apps.stable_diffusion.src.pipelines.pipeline_shark_stable_diffusion_utils import (
-        SD_STATE_CANCEL,
-    )
+    import apps.stable_diffusion.src.utils.state_manager as state_manager
+
+    if not state_manager.app.is_ready():
+        return
 
     args.prompts = [prompt]
     args.negative_prompts = [negative_prompt]
@@ -89,6 +90,9 @@ def outpaint_inf(
         lora_weights, lora_hf_id, "lora"
     )
 
+    # TODO: StateManager Try starts here
+    # try:
+    state_manager.app.set_job(f"Initializing model {custom_model}", False)
     args.save_metadata_to_json = save_metadata_to_json
     args.write_metadata_to_png = save_metadata_to_png
 
@@ -165,6 +169,9 @@ def outpaint_inf(
 
     text_output = ""
     for i in range(batch_count):
+        state_manager.app.set_job(
+            "Running outpaint job", False, i, batch_count, steps
+        )
         if i > 0:
             img_seed = utils.sanitize_seed(-1)
         out_imgs = global_obj.get_sd_obj().generate_images(
@@ -196,13 +203,19 @@ def outpaint_inf(
         text_output += "\n" + global_obj.get_sd_obj().log
         text_output += f"\nTotal image(s) generation time: {total_time:.4f}sec"
 
-        if global_obj.get_sd_status() == SD_STATE_CANCEL:
+        if state_manager.app.is_canceling():
             break
         else:
             save_output_img(out_imgs[0], img_seed)
             generated_imgs.extend(out_imgs)
             yield generated_imgs, text_output
 
+    # TODO: StateManager Try ends here
+    # except Exception:
+    #     state_manager.app.set_ready()
+    #     raise
+
+    state_manager.app.set_ready()
     return generated_imgs, text_output
 
 
